@@ -14,15 +14,29 @@ const PI_ART = [
 	"",
 ] as const;
 
-function renderPiLogo(theme: Theme): string[] {
-	const colors: Record<string, (text: string) => string> = {
-		"█": (text) => theme.fg("accent", theme.bold(text)),
-		"░": (text) => theme.fg("dim", text),
-	};
+function lolcatColor(index: number): [number, number, number] {
+	const frequency = 0.28;
+	const red = Math.round(Math.sin(frequency * index + 0) * 127 + 128);
+	const green = Math.round(Math.sin(frequency * index + (2 * Math.PI) / 3) * 127 + 128);
+	const blue = Math.round(Math.sin(frequency * index + (4 * Math.PI) / 3) * 127 + 128);
+	return [red, green, blue];
+}
 
-	return PI_ART.map((line) =>
+function lolcat(text: string, index: number, mode: "bold" | "dim"): string {
+	const [red, green, blue] = lolcatColor(index);
+	const style = mode === "bold" ? "1" : "2";
+	return `\x1b[${style};38;2;${red};${green};${blue}m${text}\x1b[39;22m`;
+}
+
+function renderPiLogo(_theme: Theme): string[] {
+	return PI_ART.map((line, lineIndex) =>
 		[...line]
-			.map((char) => colors[char]?.(char) ?? char)
+			.map((char, columnIndex) => {
+				if (char !== "█" && char !== "░") return char;
+
+				const colorIndex = columnIndex + lineIndex * 2;
+				return lolcat(char, colorIndex, char === "█" ? "bold" : "dim");
+			})
 			.join("")
 			.trimEnd(),
 	);
@@ -44,14 +58,24 @@ function getHeaderInfo(ctx: Pick<ExtensionContext, "sessionManager" | "model">):
 	};
 }
 
+function truncateMiddle(text: string, maxWidth: number): string {
+	if (text.length <= maxWidth) return text;
+	if (maxWidth <= 1) return "…";
+
+	const left = Math.ceil((maxWidth - 1) / 2);
+	const right = Math.floor((maxWidth - 1) / 2);
+	return `${text.slice(0, left)}…${text.slice(-right)}`;
+}
+
 function createPiLogoHeader(theme: Theme, info: HeaderInfo) {
 	return {
-		render(_width: number): string[] {
+		render(width: number): string[] {
 			const logo = renderPiLogo(theme);
 			const title = `${theme.fg("muted", "pi")} ${theme.fg("dim", ` v${VERSION}`)}`;
-			const session = `${theme.fg("muted", "session:")} ${info.sessionName}`;
-			const sessionFile = `${theme.fg("muted", "file:")} ${theme.fg("dim", info.sessionFile)}`;
-			const model = `${theme.fg("muted", "model:")} ${info.modelId} ${theme.fg("muted", "provider:")} ${info.modelProvider}`;
+			const session = `${theme.fg("muted", "session:")} ${truncateMiddle(info.sessionName, Math.max(1, width - 9))}`;
+			const sessionFile = `${theme.fg("muted", "file:")} ${theme.fg("dim", truncateMiddle(info.sessionFile, Math.max(1, width - 6)))}`;
+			const modelText = `model: ${info.modelId} provider: ${info.modelProvider}`;
+			const model = theme.fg("muted", truncateMiddle(modelText, Math.max(1, width)));
 
 			return ["", ...logo, title, session, sessionFile, model, ""];
 		},
